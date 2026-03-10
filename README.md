@@ -24,6 +24,16 @@ python -m http.server 8000
 http://localhost:8000
 ```
 
+## Run Tests
+
+After starting the local server, open:
+
+```text
+http://localhost:8000/tests.html
+```
+
+The page runs the browser test suite and prints pass/fail results.
+
 ## Deploy To Cloudflare Pages
 
 Use static hosting with no build:
@@ -39,8 +49,8 @@ Upload/connect this repo as-is.
 Supported URL params:
 
 - `colors`: comma-separated list of colors
-- `hz`: cue frequency in Hz (app enforces max 2 Hz)
-- `seconds`: session duration in seconds
+- `hz`: cue frequency in Hz (`0.5` to `2`)
+- `seconds`: session duration in seconds (`10` to `60`)
 - `seed`: optional deterministic seed
 
 Example:

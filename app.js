@@ -19,10 +19,10 @@ const DEFAULT_CONFIG = {
   seed: ""
 };
 
-const MIN_HZ = 0.1;
+const MIN_HZ = 0.5;
 const MAX_HZ = 2;
-const MIN_SECONDS = 1;
-const MAX_SECONDS = 3600;
+const MIN_SECONDS = 10;
+const MAX_SECONDS = 60;
 
 const state = {
   running: false,
@@ -31,7 +31,10 @@ const state = {
   rng: null,
   config: null,
   currentCue: null,
-  displayIntervalId: null
+  displayIntervalId: null,
+  nextCueTargetMs: null,
+  selectedVoice: null,
+  speechDurationFactor: 1.6
 };
 
 const elements = {
@@ -81,7 +84,7 @@ function validateConfig(config) {
   }
 
   if (!Number.isFinite(config.hz) || config.hz < MIN_HZ || config.hz > MAX_HZ) {
-    return { valid: false, error: "Frequency must be between 0.1 and 2 Hz." };
+    return { valid: false, error: "Frequency must be between 0.5 and 2 Hz." };
   }
 
   if (
@@ -89,7 +92,7 @@ function validateConfig(config) {
     config.seconds < MIN_SECONDS ||
     config.seconds > MAX_SECONDS
   ) {
-    return { valid: false, error: "Duration must be between 1 and 3600 seconds." };
+    return { valid: false, error: "Duration must be between 10 and 60 seconds." };
   }
 
   return { valid: true, error: "" };
@@ -125,12 +128,61 @@ function pickRandomColor(colors, rng) {
   return colors[index];
 }
 
-function speakText(text) {
-  if (!("speechSynthesis" in window)) {
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function estimateCueMsAtRateOne(text) {
+  const cleanText = String(text || "").trim();
+  const charCount = Math.max(3, cleanText.length);
+  return 340 + charCount * 240;
+}
+
+function computeCueRate(text, hz) {
+  const intervalMs = 1000 / hz;
+  const desiredMs = intervalMs * 0.84;
+  const baseMsAtRateOne = estimateCueMsAtRateOne(text) * state.speechDurationFactor;
+  const rate = baseMsAtRateOne / desiredMs;
+  return clamp(rate, 0.8, 10);
+}
+
+function updateSpeechDurationModel(text, rate, startedAtMs, endedAtMs) {
+  if (!Number.isFinite(startedAtMs) || !Number.isFinite(endedAtMs)) {
     return;
   }
+  const actualMs = Math.max(1, endedAtMs - startedAtMs);
+  const observedAtRateOne = actualMs * clamp(rate, 0.1, 10);
+  const estimatedAtRateOne = estimateCueMsAtRateOne(text);
+  const observedFactor = observedAtRateOne / estimatedAtRateOne;
+  const nextFactor = state.speechDurationFactor * 0.75 + observedFactor * 0.25;
+  state.speechDurationFactor = clamp(nextFactor, 0.8, 3.5);
+}
+
+function speakText(text, options) {
+  if (!("speechSynthesis" in window)) {
+    if (options && typeof options.onend === "function") {
+      options.onend();
+    }
+    return;
+  }
+
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = "en-US";
+  if (state.selectedVoice) {
+    utterance.voice = state.selectedVoice;
+  }
+  if (options && Number.isFinite(options.rate)) {
+    utterance.rate = clamp(options.rate, 0.1, 10);
+  }
+  if (options && typeof options.onstart === "function") {
+    utterance.onstart = options.onstart;
+  }
+  if (options && typeof options.onend === "function") {
+    utterance.onend = options.onend;
+  }
+  if (options && typeof options.onerror === "function") {
+    utterance.onerror = options.onerror;
+  }
   window.speechSynthesis.speak(utterance);
 }
 
@@ -163,7 +215,7 @@ function updateRuntimeDisplay(forceElapsedMs) {
     return;
   }
 
-  if (!state.running || !state.sessionStartMs || !state.config) {
+  if (!state.running || state.sessionStartMs === null || !state.config) {
     elements.elapsedText.textContent = "0.0";
     elements.remainingText.textContent = "0.0";
     return;
@@ -201,7 +253,7 @@ function stopTimers() {
 }
 
 function finishSession() {
-  if (!state.running || !state.config || !state.sessionStartMs) {
+  if (!state.running || !state.config || state.sessionStartMs === null) {
     return;
   }
 
@@ -209,6 +261,7 @@ function finishSession() {
   stopTimers();
   state.running = false;
   state.currentCue = null;
+  state.nextCueTargetMs = null;
   elements.currentCue.textContent = "None";
   updateRuntimeDisplay(elapsedMs);
   setStatus("Completed");
@@ -217,12 +270,14 @@ function finishSession() {
 }
 
 function emitCue() {
-  if (!state.running || !state.config || !state.sessionStartMs || !state.rng) {
+  if (!state.running || !state.config || state.sessionStartMs === null || !state.rng) {
     return;
   }
 
-  const elapsedMs = Date.now() - state.sessionStartMs;
-  if (elapsedMs >= state.config.seconds * 1000) {
+  const nowMs = Date.now();
+  const totalMs = state.config.seconds * 1000;
+  const elapsedMs = nowMs - state.sessionStartMs;
+  if (elapsedMs >= totalMs) {
     finishSession();
     return;
   }
@@ -230,10 +285,28 @@ function emitCue() {
   const color = pickRandomColor(state.config.colors, state.rng);
   state.currentCue = color;
   elements.currentCue.textContent = color;
-  speakText(color);
-
   const intervalMs = 1000 / state.config.hz;
-  state.timeoutId = setTimeout(emitCue, intervalMs);
+  const rate = computeCueRate(color, state.config.hz);
+  const cueMetrics = {
+    startedAtMs: null
+  };
+
+  speakText(color, {
+    rate: rate,
+    onstart: function () {
+      cueMetrics.startedAtMs = Date.now();
+    },
+    onend: function () {
+      updateSpeechDurationModel(color, rate, cueMetrics.startedAtMs, Date.now());
+    },
+    onerror: function () {
+      updateSpeechDurationModel(color, rate, cueMetrics.startedAtMs, Date.now());
+    }
+  });
+
+  state.nextCueTargetMs += intervalMs;
+  const delayMs = Math.max(0, state.nextCueTargetMs - Date.now());
+  state.timeoutId = setTimeout(emitCue, delayMs);
 }
 
 function startSession(config) {
@@ -260,6 +333,8 @@ function startSession(config) {
     seed: config.seed
   };
   state.currentCue = null;
+  state.nextCueTargetMs = state.sessionStartMs;
+  state.speechDurationFactor = 1.6;
   elements.currentCue.textContent = "None";
   setStatus("Running");
   updateRuntimeDisplay(0);
@@ -281,6 +356,7 @@ function stopSession(announceStopMessage) {
   state.currentCue = null;
   elements.currentCue.textContent = "None";
   state.sessionStartMs = null;
+  state.nextCueTargetMs = null;
   updateRuntimeDisplay();
   setStatus("Stopped");
   if (announceStopMessage) {
@@ -406,6 +482,24 @@ function wireEvents() {
 }
 
 function init() {
+  if ("speechSynthesis" in window) {
+    const pickVoice = function () {
+      const voices = window.speechSynthesis.getVoices();
+      const preferred = voices.find(function (voice) {
+        return voice.lang === "en-US" && voice.localService;
+      });
+      const fallback = voices.find(function (voice) {
+        return voice.lang && voice.lang.toLowerCase().startsWith("en");
+      });
+      state.selectedVoice = preferred || fallback || null;
+    };
+
+    pickVoice();
+    if (typeof window.speechSynthesis.onvoiceschanged !== "undefined") {
+      window.speechSynthesis.onvoiceschanged = pickVoice;
+    }
+  }
+
   const initialConfig = readConfigFromUrl();
   applyConfigToForm(initialConfig);
   wireEvents();
@@ -414,4 +508,39 @@ function init() {
   syncControlState();
 }
 
-init();
+window.ColorCueApp = {
+  AVAILABLE_COLORS,
+  DEFAULT_CONFIG,
+  MIN_HZ,
+  MAX_HZ,
+  MIN_SECONDS,
+  MAX_SECONDS,
+  state,
+  elements,
+  getSelectedColors,
+  getFormValues,
+  validateConfig,
+  createRandomFn,
+  pickRandomColor,
+  computeCueRate,
+  speakText,
+  cancelSpeech,
+  startSession,
+  stopSession,
+  finishSession,
+  readConfigFromUrl,
+  buildShareUrl,
+  copyShareLink,
+  updateRuntimeDisplay,
+  setStatus,
+  setError,
+  clearError,
+  sanitizeColors,
+  applyConfigToForm,
+  syncControlState,
+  init
+};
+
+if (!window.__COLOR_CUE_TEST__) {
+  init();
+}

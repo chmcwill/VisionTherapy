@@ -3,17 +3,44 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Color Cue Therapy Tool</title>
-  <link rel="stylesheet" href="styles.css">
+  <title>Color Cue App Tests</title>
+  <style>
+    body {
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      margin: 0;
+      padding: 1rem;
+      background: #f5f7fb;
+      color: #1f2937;
+    }
+
+    #results {
+      max-width: 860px;
+      margin: 0 auto;
+      background: #fff;
+      border: 1px solid #dbe3f0;
+      border-radius: 10px;
+      padding: 1rem;
+      white-space: pre-wrap;
+      line-height: 1.5;
+    }
+
+    .hidden-app {
+      position: absolute;
+      left: -9999px;
+      top: 0;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+    }
+  </style>
 </head>
 <body>
-  <main class="app-shell">
-    <h1>Color Cue Therapy Tool</h1>
-    <p class="instructions">Select colors, choose a frequency and duration, then press Start.</p>
+  <h1>Color Cue App Test Runner</h1>
+  <div id="results">Running tests...</div>
 
+  <main class="hidden-app">
     <form id="config-form">
       <fieldset id="colors-fieldset">
-        <legend>Colors</legend>
         <label><input type="checkbox" name="color" value="red"> Red</label>
         <label><input type="checkbox" name="color" value="blue"> Blue</label>
         <label><input type="checkbox" name="color" value="yellow"> Yellow</label>
@@ -36,13 +63,11 @@
       <label for="seed-input">Seed (optional)</label>
       <input id="seed-input" type="text" autocomplete="off">
 
-      <div id="error-message" role="alert" aria-live="polite"></div>
+      <div id="error-message"></div>
 
-      <div class="button-row">
-        <button id="start-button" type="button">Start</button>
-        <button id="stop-button" type="button" disabled>Stop</button>
-        <button id="copy-link-button" type="button">Copy Share Link</button>
-      </div>
+      <button id="start-button" type="button">Start</button>
+      <button id="stop-button" type="button">Stop</button>
+      <button id="copy-link-button" type="button">Copy Share Link</button>
     </form>
 
     <section id="status-panel">
@@ -53,6 +78,10 @@
     </section>
   </main>
 
+  <script>
+    window.__COLOR_CUE_TEST__ = true;
+  </script>
   <script src="app.js"></script>
+  <script src="tests.js"></script>
 </body>
 </html>
