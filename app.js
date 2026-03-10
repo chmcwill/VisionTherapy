@@ -60,6 +60,8 @@ const state = {
   speechDurationFactor: 1.1,
   transitionCompMs: 70,
   draggedColor: null,
+  tapSelectedColor: null,
+  touchMode: false,
   boardInitialized: false
 };
 
@@ -118,6 +120,20 @@ function sanitizeOptionCount(value) {
 
 function getColorChip(color) {
   return elements.colorsFieldset.querySelector('.color-chip[data-color="' + color + '"]');
+}
+
+function setTapSelectedColor(color) {
+  state.tapSelectedColor = color;
+  elements.colorsFieldset.querySelectorAll(".color-chip").forEach(function (chip) {
+    chip.classList.remove("is-selected");
+  });
+  if (!color) {
+    return;
+  }
+  const chip = getColorChip(color);
+  if (chip) {
+    chip.classList.add("is-selected");
+  }
 }
 
 function getDropBodyForCount(optionCount) {
@@ -579,6 +595,8 @@ function readConfigFromUrl() {
 }
 
 function applyConfigToForm(config) {
+  setTapSelectedColor(null);
+
   for (const color of AVAILABLE_COLORS) {
     moveColorToOptionCount(color, 0);
   }
@@ -637,6 +655,9 @@ async function copyShareLink() {
 
 function wireDropZone(zoneElement, optionCount) {
   zoneElement.addEventListener("dragover", function (event) {
+    if (state.touchMode) {
+      return;
+    }
     event.preventDefault();
     zoneElement.classList.add("is-over");
   });
@@ -646,6 +667,9 @@ function wireDropZone(zoneElement, optionCount) {
   });
 
   zoneElement.addEventListener("drop", function (event) {
+    if (state.touchMode) {
+      return;
+    }
     event.preventDefault();
     zoneElement.classList.remove("is-over");
     const color =
@@ -654,6 +678,25 @@ function wireDropZone(zoneElement, optionCount) {
       return;
     }
     moveColorToOptionCount(color, optionCount);
+    setTapSelectedColor(null);
+    state.draggedColor = null;
+    const movedChip = getColorChip(color);
+    if (movedChip) {
+      movedChip.classList.remove("is-dragging");
+    }
+    syncControlState();
+  });
+
+  zoneElement.addEventListener("click", function (event) {
+    const target = event.target;
+    if (target instanceof Element && target.closest(".color-chip")) {
+      return;
+    }
+    if (!state.tapSelectedColor) {
+      return;
+    }
+    moveColorToOptionCount(state.tapSelectedColor, optionCount);
+    setTapSelectedColor(null);
     syncControlState();
   });
 }
@@ -662,6 +705,8 @@ function initializeColorBoard() {
   if (state.boardInitialized) {
     return;
   }
+
+  state.touchMode = window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0;
 
   elements.colorBankBody = elements.colorBank.querySelector(".zone-chips");
   elements.optionZoneBodies = {};
@@ -674,16 +719,44 @@ function initializeColorBoard() {
     const chip = document.createElement("button");
     chip.type = "button";
     chip.className = "color-chip";
-    chip.draggable = true;
+    chip.draggable = !state.touchMode;
     chip.dataset.color = color;
     chip.textContent = titleCase(color);
     chip.addEventListener("dragstart", function (event) {
+      if (state.touchMode) {
+        return;
+      }
       state.draggedColor = color;
+      setTapSelectedColor(null);
       chip.classList.add("is-dragging");
-      event.dataTransfer.setData("text/plain", color);
-      event.dataTransfer.effectAllowed = "move";
+      if (event.dataTransfer) {
+        event.dataTransfer.setData("text/plain", color);
+        event.dataTransfer.effectAllowed = "move";
+      }
     });
     chip.addEventListener("dragend", function () {
+      chip.classList.remove("is-dragging");
+      state.draggedColor = null;
+    });
+    chip.addEventListener("click", function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      const nextColor = state.tapSelectedColor === color ? null : color;
+      setTapSelectedColor(nextColor);
+    });
+    chip.addEventListener("touchend", function () {
+      chip.classList.remove("is-dragging");
+      state.draggedColor = null;
+    });
+    chip.addEventListener("touchcancel", function () {
+      chip.classList.remove("is-dragging");
+      state.draggedColor = null;
+    });
+    chip.addEventListener("pointerup", function () {
+      chip.classList.remove("is-dragging");
+      state.draggedColor = null;
+    });
+    chip.addEventListener("pointercancel", function () {
       chip.classList.remove("is-dragging");
       state.draggedColor = null;
     });

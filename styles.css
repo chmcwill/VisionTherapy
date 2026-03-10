@@ -112,6 +112,7 @@ h1 {
   font-size: 0.9rem;
   padding: 0.35rem 0.65rem;
   cursor: grab;
+  touch-action: manipulation;
 }
 
 .color-chip:active {
@@ -120,6 +121,12 @@ h1 {
 
 .color-chip.is-dragging {
   opacity: 0.45;
+}
+
+.color-chip.is-selected {
+  border-color: #1b6ed8;
+  background: #eaf2ff;
+  box-shadow: 0 0 0 2px rgba(27, 110, 216, 0.18);
 }
 
 label {
