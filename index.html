@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Color Cue Therapy Tool</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <h1>Color Cue Therapy Tool</h1>
+    <p class="instructions">Select colors, choose a frequency and duration, then press Start.</p>
+
+    <form id="config-form">
+      <fieldset id="colors-fieldset">
+        <legend>Colors</legend>
+        <label><input type="checkbox" name="color" value="red"> Red</label>
+        <label><input type="checkbox" name="color" value="blue"> Blue</label>
+        <label><input type="checkbox" name="color" value="yellow"> Yellow</label>
+        <label><input type="checkbox" name="color" value="green"> Green</label>
+        <label><input type="checkbox" name="color" value="orange"> Orange</label>
+        <label><input type="checkbox" name="color" value="pink"> Pink</label>
+        <label><input type="checkbox" name="color" value="cyan"> Cyan</label>
+        <label><input type="checkbox" name="color" value="purple"> Purple</label>
+        <label><input type="checkbox" name="color" value="black"> Black</label>
+        <label><input type="checkbox" name="color" value="brown"> Brown</label>
+        <label><input type="checkbox" name="color" value="white"> White</label>
+      </fieldset>
+
+      <label for="hz-input">Frequency (Hz, max 2): <span id="hz-value">1.0</span></label>
+      <input id="hz-input" type="range" step="0.1" min="0.1" max="2" value="1">
+
+      <label for="seconds-input">Duration (seconds): <span id="seconds-value">30</span></label>
+      <input id="seconds-input" type="range" step="1" min="1" max="3600" value="30">
+
+      <label for="seed-input">Seed (optional)</label>
+      <input id="seed-input" type="text" autocomplete="off">
+
+      <div id="error-message" role="alert" aria-live="polite"></div>
+
+      <div class="button-row">
+        <button id="start-button" type="button">Start</button>
+        <button id="stop-button" type="button" disabled>Stop</button>
+        <button id="copy-link-button" type="button">Copy Share Link</button>
+      </div>
+    </form>
+
+    <section id="status-panel">
+      <p>Status: <span id="status-text">Ready</span></p>
+      <p>Current cue: <span id="current-cue">None</span></p>
+      <p>Elapsed: <span id="elapsed-text">0.0</span>s</p>
+      <p>Remaining: <span id="remaining-text">0.0</span>s</p>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
