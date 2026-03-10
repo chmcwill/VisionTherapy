@@ -7,6 +7,7 @@ Small static web app for color-cue speech exercises. Users select colors, freque
 - Client-side only (HTML/CSS/JavaScript, no backend)
 - Drag-and-drop color bank with per-color option zones (`1` to `4`)
 - Color cue playback using browser speech synthesis
+- Accent/voice picker (based on available browser voices)
 - Deterministic seeded randomness (when `seed` is set)
 - URL-based session sharing
 - Cloudflare Pages friendly static deployment
@@ -54,6 +55,7 @@ Supported URL params:
 - `hz`: cue frequency in Hz (`0.25` to `1.5`)
 - `seconds`: session duration in seconds (`10` to `60`)
 - `seed`: optional deterministic seed
+- `accent`: optional voice key from the voice picker (omitted when using auto)
 
 Example:
 

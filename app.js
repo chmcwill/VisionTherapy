@@ -36,7 +36,8 @@ const DEFAULT_CONFIG = {
   },
   hz: 0.5,
   seconds: 30,
-  seed: ""
+  seed: "",
+  accent: "auto"
 };
 
 const MIN_HZ = 0.25;
@@ -63,6 +64,7 @@ const state = {
   tapSelectedColor: null,
   touchMode: false,
   speechSupported: "speechSynthesis" in window,
+  availableVoices: [],
   boardInitialized: false
 };
 
@@ -75,6 +77,7 @@ const elements = {
   hzValue: document.getElementById("hz-value"),
   secondsInput: document.getElementById("seconds-input"),
   secondsValue: document.getElementById("seconds-value"),
+  accentInput: document.getElementById("accent-input"),
   seedInput: document.getElementById("seed-input"),
   errorMessage: document.getElementById("error-message"),
   startButton: document.getElementById("start-button"),
@@ -99,6 +102,14 @@ function formatHzValue(value) {
     return rounded.toFixed(1);
   }
   return rounded.toFixed(2);
+}
+
+function getVoiceKey(voice) {
+  return voice.voiceURI || voice.name + "|" + voice.lang;
+}
+
+function getVoiceLabel(voice) {
+  return voice.lang + " - " + voice.name;
 }
 
 function titleCase(text) {
@@ -180,7 +191,8 @@ function getFormValues() {
     optionCounts: getColorOptionCounts(),
     hz: Number.parseFloat(elements.hzInput.value),
     seconds: Number.parseInt(elements.secondsInput.value, 10),
-    seed: elements.seedInput.value.trim()
+    seed: elements.seedInput.value.trim(),
+    accent: elements.accentInput ? elements.accentInput.value : DEFAULT_CONFIG.accent
   };
 }
 
@@ -215,6 +227,68 @@ function validateConfig(config) {
   }
 
   return { valid: true, error: "" };
+}
+
+function pickAutoVoice(voices) {
+  const preferred = voices.find(function (voice) {
+    return voice.lang === "en-US" && voice.localService;
+  });
+  const fallback = voices.find(function (voice) {
+    return voice.lang && voice.lang.toLowerCase().startsWith("en");
+  });
+  return preferred || fallback || null;
+}
+
+function refreshAccentInputOptions(voices) {
+  if (!elements.accentInput) {
+    return;
+  }
+  const previousValue =
+    elements.accentInput.dataset.desiredAccent ||
+    elements.accentInput.value ||
+    DEFAULT_CONFIG.accent;
+  const englishVoices = voices.filter(function (voice) {
+    return voice.lang && voice.lang.toLowerCase().startsWith("en");
+  });
+
+  elements.accentInput.innerHTML = "";
+  const autoOption = document.createElement("option");
+  autoOption.value = "auto";
+  autoOption.textContent = "Auto (recommended)";
+  elements.accentInput.appendChild(autoOption);
+
+  englishVoices.forEach(function (voice) {
+    const option = document.createElement("option");
+    option.value = getVoiceKey(voice);
+    option.textContent = getVoiceLabel(voice);
+    elements.accentInput.appendChild(option);
+  });
+
+  const hasPrevious = Array.from(elements.accentInput.options).some(function (option) {
+    return option.value === previousValue;
+  });
+  elements.accentInput.value = hasPrevious ? previousValue : "auto";
+  elements.accentInput.dataset.desiredAccent = elements.accentInput.value;
+}
+
+function updateSelectedVoiceFromAccentSelection() {
+  if (!state.speechSupported) {
+    state.selectedVoice = null;
+    return;
+  }
+  const voices = state.availableVoices || [];
+  const selectedKey = elements.accentInput ? elements.accentInput.value : "auto";
+  if (elements.accentInput) {
+    elements.accentInput.dataset.desiredAccent = selectedKey || DEFAULT_CONFIG.accent;
+  }
+  if (!selectedKey || selectedKey === "auto") {
+    state.selectedVoice = pickAutoVoice(voices);
+    return;
+  }
+  const explicitVoice = voices.find(function (voice) {
+    return getVoiceKey(voice) === selectedKey;
+  });
+  state.selectedVoice = explicitVoice || pickAutoVoice(voices);
 }
 
 function hashStringToInt(seed) {
@@ -486,7 +560,8 @@ function startSession(config) {
     optionCounts: optionCounts,
     hz: config.hz,
     seconds: config.seconds,
-    seed: config.seed
+    seed: config.seed,
+    accent: config.accent || DEFAULT_CONFIG.accent
   };
   state.currentCue = null;
   state.speechDurationFactor = 1.1;
@@ -567,7 +642,8 @@ function readConfigFromUrl() {
     optionCounts: {},
     hz: DEFAULT_CONFIG.hz,
     seconds: DEFAULT_CONFIG.seconds,
-    seed: DEFAULT_CONFIG.seed
+    seed: DEFAULT_CONFIG.seed,
+    accent: DEFAULT_CONFIG.accent
   };
 
   if (params.has("colors")) {
@@ -597,6 +673,10 @@ function readConfigFromUrl() {
     config.seed = params.get("seed").trim();
   }
 
+  if (params.has("accent")) {
+    config.accent = params.get("accent").trim() || DEFAULT_CONFIG.accent;
+  }
+
   return config;
 }
 
@@ -619,6 +699,15 @@ function applyConfigToForm(config) {
   elements.hzInput.value = String(hz);
   elements.secondsInput.value = String(seconds);
   elements.seedInput.value = config.seed || "";
+  if (elements.accentInput) {
+    const accentValue = config.accent || DEFAULT_CONFIG.accent;
+    elements.accentInput.dataset.desiredAccent = accentValue;
+    const hasAccent = Array.from(elements.accentInput.options).some(function (option) {
+      return option.value === accentValue;
+    });
+    elements.accentInput.value = hasAccent ? accentValue : DEFAULT_CONFIG.accent;
+    updateSelectedVoiceFromAccentSelection();
+  }
   elements.hzValue.textContent = formatHzValue(Number.parseFloat(elements.hzInput.value));
   elements.secondsValue.textContent = String(
     Number.parseInt(elements.secondsInput.value, 10)
@@ -637,6 +726,9 @@ function buildShareUrl(config) {
   url.searchParams.set("options", optionTokens.join(","));
   if (config.seed) {
     url.searchParams.set("seed", config.seed);
+  }
+  if (config.accent && config.accent !== DEFAULT_CONFIG.accent) {
+    url.searchParams.set("accent", config.accent);
   }
   return url.toString();
 }
@@ -796,27 +888,25 @@ function wireEvents() {
     elements.secondsValue.textContent = String(
       Number.parseInt(elements.secondsInput.value, 10)
     );
+    updateSelectedVoiceFromAccentSelection();
     syncControlState();
   });
 }
 
 function init() {
   if (state.speechSupported) {
-    const pickVoice = function () {
-      const voices = window.speechSynthesis.getVoices();
-      const preferred = voices.find(function (voice) {
-        return voice.lang === "en-US" && voice.localService;
-      });
-      const fallback = voices.find(function (voice) {
-        return voice.lang && voice.lang.toLowerCase().startsWith("en");
-      });
-      state.selectedVoice = preferred || fallback || null;
+    const loadVoices = function () {
+      state.availableVoices = window.speechSynthesis.getVoices();
+      refreshAccentInputOptions(state.availableVoices);
+      updateSelectedVoiceFromAccentSelection();
     };
 
-    pickVoice();
+    loadVoices();
     if (typeof window.speechSynthesis.onvoiceschanged !== "undefined") {
-      window.speechSynthesis.onvoiceschanged = pickVoice;
+      window.speechSynthesis.onvoiceschanged = loadVoices;
     }
+  } else if (elements.accentInput) {
+    elements.accentInput.disabled = true;
   }
 
   initializeColorBoard();
