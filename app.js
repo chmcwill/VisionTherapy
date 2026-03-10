@@ -62,6 +62,7 @@ const state = {
   draggedColor: null,
   tapSelectedColor: null,
   touchMode: false,
+  speechSupported: "speechSynthesis" in window,
   boardInitialized: false
 };
 
@@ -362,10 +363,15 @@ function updateRuntimeDisplay(forceElapsedMs) {
 
 function syncControlState() {
   const validation = validateConfig(getFormValues());
-  elements.startButton.disabled = state.running || !validation.valid;
+  const blockedBySpeechSupport = !state.speechSupported;
+  elements.startButton.disabled = state.running || !validation.valid || blockedBySpeechSupport;
   elements.stopButton.disabled = !state.running;
   if (!state.running) {
-    if (validation.valid) {
+    if (!state.speechSupported) {
+      setError(
+        "Speech synthesis is not supported in this browser. Please use Chrome, Safari, or another supported browser."
+      );
+    } else if (validation.valid) {
       clearError();
     } else {
       setError(validation.error);
@@ -795,7 +801,7 @@ function wireEvents() {
 }
 
 function init() {
-  if ("speechSynthesis" in window) {
+  if (state.speechSupported) {
     const pickVoice = function () {
       const voices = window.speechSynthesis.getVoices();
       const preferred = voices.find(function (voice) {
