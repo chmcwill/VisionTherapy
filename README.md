@@ -5,6 +5,7 @@ Small static web app for color-cue speech exercises. Users select colors, freque
 ## Features
 
 - Client-side only (HTML/CSS/JavaScript, no backend)
+- Drag-and-drop color bank with per-color option zones (`1` to `4`)
 - Color cue playback using browser speech synthesis
 - Deterministic seeded randomness (when `seed` is set)
 - URL-based session sharing
@@ -49,15 +50,23 @@ Upload/connect this repo as-is.
 Supported URL params:
 
 - `colors`: comma-separated list of colors
-- `hz`: cue frequency in Hz (`0.5` to `2`)
+- `options`: per-color option counts as `color:count` pairs (for selected colors)
+- `hz`: cue frequency in Hz (`0.25` to `1.5`)
 - `seconds`: session duration in seconds (`10` to `60`)
 - `seed`: optional deterministic seed
 
 Example:
 
 ```text
-/?colors=red,blue,yellow,green&hz=1&seconds=30&seed=myseed123
+/?colors=red,blue,yellow,green&options=red:4,blue:4,yellow:3,green:3&hz=1&seconds=30&seed=myseed123
 ```
+
+### Option Count Rules
+
+- `1`: color only (`red`)
+- `2`: `left`, `right`
+- `3`: `left`, `middle`, `right`
+- `4`: `far left`, `left`, `right`, `far right`
 
 ## Seeded Randomness
 

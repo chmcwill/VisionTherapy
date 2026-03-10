@@ -54,12 +54,72 @@ h1 {
   border-radius: 10px;
   padding: 0.8rem;
   display: grid;
-  gap: 0.4rem;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.7rem;
 }
 
 #colors-fieldset legend {
   padding: 0 0.3rem;
+}
+
+.board-note {
+  margin: 0;
+  color: var(--subtle);
+  font-size: 0.9rem;
+}
+
+.drop-zone {
+  border: 1px dashed #b7c6de;
+  border-radius: 10px;
+  background: #f8fbff;
+  padding: 0.6rem;
+  min-height: 90px;
+}
+
+.drop-zone.is-over {
+  border-color: #3172e8;
+  background: #edf4ff;
+}
+
+.drop-zone h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+}
+
+.zone-help {
+  margin: 0 0 0.45rem;
+  font-size: 0.82rem;
+  color: var(--subtle);
+}
+
+.zone-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  min-height: 32px;
+}
+
+.option-zone-grid {
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.color-chip {
+  border: 1px solid #b4c3db;
+  background: #fff;
+  color: #213047;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  padding: 0.35rem 0.65rem;
+  cursor: grab;
+}
+
+.color-chip:active {
+  cursor: grabbing;
+}
+
+.color-chip.is-dragging {
+  opacity: 0.45;
 }
 
 label {
@@ -76,6 +136,21 @@ input[type="text"] {
   border: 1px solid var(--border);
   border-radius: 8px;
   font-size: 1rem;
+}
+
+.field-help {
+  margin: 0.05rem 0 0;
+  padding: 0.55rem 0.65rem;
+  color: var(--subtle);
+  background: #f3f7ff;
+  border: 1px solid #d8e2f1;
+  border-radius: 8px;
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.field-help strong {
+  color: #2a3c57;
 }
 
 #error-message {
@@ -117,6 +192,10 @@ button:disabled {
 }
 
 @media (max-width: 620px) {
+  .option-zone-grid {
+    grid-template-columns: 1fr;
+  }
+
   .button-row {
     grid-template-columns: 1fr;
   }

@@ -9,32 +9,51 @@
 <body>
   <main class="app-shell">
     <h1>Color Cue Therapy Tool</h1>
-    <p class="instructions">Select colors, choose a frequency and duration, then press Start.</p>
+    <p class="instructions">Drag colors into option zones, choose frequency and duration, then press Start.</p>
 
     <form id="config-form">
       <fieldset id="colors-fieldset">
-        <legend>Colors</legend>
-        <label><input type="checkbox" name="color" value="red"> Red</label>
-        <label><input type="checkbox" name="color" value="blue"> Blue</label>
-        <label><input type="checkbox" name="color" value="yellow"> Yellow</label>
-        <label><input type="checkbox" name="color" value="green"> Green</label>
-        <label><input type="checkbox" name="color" value="orange"> Orange</label>
-        <label><input type="checkbox" name="color" value="pink"> Pink</label>
-        <label><input type="checkbox" name="color" value="cyan"> Cyan</label>
-        <label><input type="checkbox" name="color" value="purple"> Purple</label>
-        <label><input type="checkbox" name="color" value="black"> Black</label>
-        <label><input type="checkbox" name="color" value="brown"> Brown</label>
-        <label><input type="checkbox" name="color" value="white"> White</label>
+        <legend>Color Options</legend>
+        <p class="board-note">Drag each color into a zone. Zone number sets how many spatial options that color uses.</p>
+
+        <section class="drop-zone bank-zone" id="color-bank" data-option-count="0">
+          <h3>Color Bank (unused)</h3>
+          <div class="zone-chips"></div>
+        </section>
+
+        <div class="option-zone-grid">
+          <section class="drop-zone option-zone" id="option-zone-1" data-option-count="1">
+            <h3>1 Option</h3>
+            <p class="zone-help">Color only</p>
+            <div class="zone-chips"></div>
+          </section>
+          <section class="drop-zone option-zone" id="option-zone-2" data-option-count="2">
+            <h3>2 Options</h3>
+            <p class="zone-help">Left, Right</p>
+            <div class="zone-chips"></div>
+          </section>
+          <section class="drop-zone option-zone" id="option-zone-3" data-option-count="3">
+            <h3>3 Options</h3>
+            <p class="zone-help">Left, Middle, Right</p>
+            <div class="zone-chips"></div>
+          </section>
+          <section class="drop-zone option-zone" id="option-zone-4" data-option-count="4">
+            <h3>4 Options</h3>
+            <p class="zone-help">Far Left, Left, Right, Far Right</p>
+            <div class="zone-chips"></div>
+          </section>
+        </div>
       </fieldset>
 
-      <label for="hz-input">Frequency (Hz, 0.5 to 2): <span id="hz-value">1.0</span></label>
-      <input id="hz-input" type="range" step="0.1" min="0.5" max="2" value="1">
+      <label for="hz-input">Frequency (Hz, 0.25 to 1.5): <span id="hz-value">0.5</span></label>
+      <input id="hz-input" type="range" step="0.05" min="0.25" max="1.5" value="0.5">
 
       <label for="seconds-input">Duration (seconds, 10 to 60): <span id="seconds-value">30</span></label>
       <input id="seconds-input" type="range" step="1" min="10" max="60" value="30">
 
-      <label for="seed-input">Seed (optional)</label>
-      <input id="seed-input" type="text" autocomplete="off">
+      <label for="seed-input">Seed</label>
+      <input id="seed-input" type="text" autocomplete="off" aria-describedby="seed-help">
+      <p id="seed-help" class="field-help"><strong>Seed tip:</strong> Use any word or phrase (for example, "berry"). The same seed with the same settings reproduces the same cue sequence. Run without seed for a random sequence each time.</p>
 
       <div id="error-message" role="alert" aria-live="polite"></div>
 

@@ -12,34 +12,62 @@ const AVAILABLE_COLORS = [
   "white"
 ];
 
+const DEFAULT_OPTION_COUNTS = {
+  red: 4,
+  blue: 4,
+  yellow: 3,
+  green: 3
+};
+
+const POSITION_OPTIONS = {
+  1: [""],
+  2: ["left", "right"],
+  3: ["left", "middle", "right"],
+  4: ["far left", "left", "right", "far right"]
+};
+
 const DEFAULT_CONFIG = {
   colors: ["red", "blue", "yellow", "green"],
-  hz: 1,
+  optionCounts: {
+    red: 4,
+    blue: 4,
+    yellow: 3,
+    green: 3
+  },
+  hz: 0.5,
   seconds: 30,
   seed: ""
 };
 
-const MIN_HZ = 0.5;
-const MAX_HZ = 2;
+const MIN_HZ = 0.25;
+const MAX_HZ = 1.5;
 const MIN_SECONDS = 10;
 const MAX_SECONDS = 60;
+const MIN_OPTIONS = 1;
+const MAX_OPTIONS = 4;
 
 const state = {
   running: false,
   sessionStartMs: null,
   timeoutId: null,
+  endTimeoutId: null,
   rng: null,
   config: null,
   currentCue: null,
   displayIntervalId: null,
   nextCueTargetMs: null,
   selectedVoice: null,
-  speechDurationFactor: 1.6
+  speechDurationFactor: 1.1,
+  transitionCompMs: 70,
+  draggedColor: null,
+  boardInitialized: false
 };
 
 const elements = {
   form: document.getElementById("config-form"),
   colorsFieldset: document.getElementById("colors-fieldset"),
+  colorBank: document.getElementById("color-bank"),
+  optionZones: Array.from(document.querySelectorAll(".option-zone")),
   hzInput: document.getElementById("hz-input"),
   hzValue: document.getElementById("hz-value"),
   secondsInput: document.getElementById("seconds-input"),
@@ -52,20 +80,87 @@ const elements = {
   statusText: document.getElementById("status-text"),
   currentCue: document.getElementById("current-cue"),
   elapsedText: document.getElementById("elapsed-text"),
-  remainingText: document.getElementById("remaining-text")
+  remainingText: document.getElementById("remaining-text"),
+  optionZoneBodies: {},
+  colorBankBody: null
 };
 
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function formatHzValue(value) {
+  const rounded = Math.round(value * 100) / 100;
+  const hundred = Math.round(rounded * 100);
+  if (hundred % 10 === 0) {
+    return rounded.toFixed(1);
+  }
+  return rounded.toFixed(2);
+}
+
+function titleCase(text) {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function getDefaultOptionCount(color) {
+  return DEFAULT_OPTION_COUNTS[color] || 1;
+}
+
+function sanitizeOptionCount(value) {
+  if (!Number.isInteger(value)) {
+    return null;
+  }
+  if (value < MIN_OPTIONS || value > MAX_OPTIONS) {
+    return null;
+  }
+  return value;
+}
+
+function getColorChip(color) {
+  return elements.colorsFieldset.querySelector('.color-chip[data-color="' + color + '"]');
+}
+
+function getDropBodyForCount(optionCount) {
+  if (optionCount === 0) {
+    return elements.colorBankBody;
+  }
+  return elements.optionZoneBodies[optionCount] || null;
+}
+
+function moveColorToOptionCount(color, optionCount) {
+  const chip = getColorChip(color);
+  const targetBody = getDropBodyForCount(optionCount);
+  if (!chip || !targetBody) {
+    return;
+  }
+  targetBody.appendChild(chip);
+}
+
+function getColorOptionCounts() {
+  const optionCounts = {};
+  for (const zone of elements.optionZones) {
+    const optionCount = Number.parseInt(zone.dataset.optionCount, 10);
+    zone.querySelectorAll(".color-chip").forEach(function (chip) {
+      optionCounts[chip.dataset.color] = optionCount;
+    });
+  }
+  return optionCounts;
+}
+
 function getSelectedColors() {
-  return Array.from(
-    elements.colorsFieldset.querySelectorAll('input[name="color"]:checked')
-  ).map(function (input) {
-    return input.value;
-  });
+  const colors = [];
+  for (const zone of elements.optionZones) {
+    zone.querySelectorAll(".color-chip").forEach(function (chip) {
+      colors.push(chip.dataset.color);
+    });
+  }
+  return colors;
 }
 
 function getFormValues() {
   return {
     colors: getSelectedColors(),
+    optionCounts: getColorOptionCounts(),
     hz: Number.parseFloat(elements.hzInput.value),
     seconds: Number.parseInt(elements.secondsInput.value, 10),
     seed: elements.seedInput.value.trim()
@@ -74,17 +169,24 @@ function getFormValues() {
 
 function validateConfig(config) {
   if (!Array.isArray(config.colors) || config.colors.length === 0) {
-    return { valid: false, error: "Select at least one color." };
+    return { valid: false, error: "Drag at least one color into an option zone." };
   }
 
   for (const color of config.colors) {
     if (!AVAILABLE_COLORS.includes(color)) {
       return { valid: false, error: "One or more selected colors are invalid." };
     }
+    const optionCount = sanitizeOptionCount(config.optionCounts[color]);
+    if (optionCount === null) {
+      return {
+        valid: false,
+        error: "Each selected color must have an option count from 1 to 4."
+      };
+    }
   }
 
   if (!Number.isFinite(config.hz) || config.hz < MIN_HZ || config.hz > MAX_HZ) {
-    return { valid: false, error: "Frequency must be between 0.5 and 2 Hz." };
+    return { valid: false, error: "Frequency must be between 0.25 and 1.5 Hz." };
   }
 
   if (
@@ -128,8 +230,13 @@ function pickRandomColor(colors, rng) {
   return colors[index];
 }
 
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
+function buildCueText(color, optionCount, rng) {
+  const options = POSITION_OPTIONS[optionCount] || POSITION_OPTIONS[1];
+  if (optionCount === 1) {
+    return color;
+  }
+  const index = Math.floor(rng() * options.length);
+  return color + " " + options[index];
 }
 
 function estimateCueMsAtRateOne(text) {
@@ -140,10 +247,19 @@ function estimateCueMsAtRateOne(text) {
 
 function computeCueRate(text, hz) {
   const intervalMs = 1000 / hz;
-  const desiredMs = intervalMs * 0.84;
+  const desiredMs = intervalMs * 0.93;
   const baseMsAtRateOne = estimateCueMsAtRateOne(text) * state.speechDurationFactor;
   const rate = baseMsAtRateOne / desiredMs;
   return clamp(rate, 0.8, 10);
+}
+
+function updateTransitionComp(startLatencyMs) {
+  if (!Number.isFinite(startLatencyMs)) {
+    return;
+  }
+  const observedLatencyMs = clamp(startLatencyMs, 0, 300);
+  const nextComp = state.transitionCompMs * 0.8 + observedLatencyMs * 0.2;
+  state.transitionCompMs = clamp(nextComp, 0, 120);
 }
 
 function updateSpeechDurationModel(text, rate, startedAtMs, endedAtMs) {
@@ -246,6 +362,10 @@ function stopTimers() {
     clearTimeout(state.timeoutId);
     state.timeoutId = null;
   }
+  if (state.endTimeoutId !== null) {
+    clearTimeout(state.endTimeoutId);
+    state.endTimeoutId = null;
+  }
   if (state.displayIntervalId !== null) {
     clearInterval(state.displayIntervalId);
     state.displayIntervalId = null;
@@ -283,29 +403,36 @@ function emitCue() {
   }
 
   const color = pickRandomColor(state.config.colors, state.rng);
-  state.currentCue = color;
-  elements.currentCue.textContent = color;
+  const optionCount = state.config.optionCounts[color] || 1;
+  const cueText = buildCueText(color, optionCount, state.rng);
+  state.currentCue = cueText;
+  elements.currentCue.textContent = cueText;
+
   const intervalMs = 1000 / state.config.hz;
-  const rate = computeCueRate(color, state.config.hz);
+  const rate = computeCueRate(cueText, state.config.hz);
   const cueMetrics = {
+    requestedAtMs: Date.now(),
     startedAtMs: null
   };
 
-  speakText(color, {
+  speakText(cueText, {
     rate: rate,
     onstart: function () {
       cueMetrics.startedAtMs = Date.now();
+      updateTransitionComp(cueMetrics.startedAtMs - cueMetrics.requestedAtMs);
     },
     onend: function () {
-      updateSpeechDurationModel(color, rate, cueMetrics.startedAtMs, Date.now());
+      updateSpeechDurationModel(cueText, rate, cueMetrics.startedAtMs, Date.now());
     },
     onerror: function () {
-      updateSpeechDurationModel(color, rate, cueMetrics.startedAtMs, Date.now());
+      updateSpeechDurationModel(cueText, rate, cueMetrics.startedAtMs, Date.now());
     }
   });
 
   state.nextCueTargetMs += intervalMs;
-  const delayMs = Math.max(0, state.nextCueTargetMs - Date.now());
+  const maxCompMs = Math.min(intervalMs * 0.2, 80);
+  const effectiveCompMs = Math.min(state.transitionCompMs, maxCompMs);
+  const delayMs = Math.max(0, state.nextCueTargetMs - Date.now() - effectiveCompMs);
   state.timeoutId = setTimeout(emitCue, delayMs);
 }
 
@@ -326,20 +453,29 @@ function startSession(config) {
   state.running = true;
   state.sessionStartMs = Date.now();
   state.rng = createRandomFn(config.seed);
+
+  const optionCounts = {};
+  for (const color of config.colors) {
+    optionCounts[color] = sanitizeOptionCount(config.optionCounts[color]) || 1;
+  }
+
   state.config = {
     colors: config.colors.slice(),
+    optionCounts: optionCounts,
     hz: config.hz,
     seconds: config.seconds,
     seed: config.seed
   };
   state.currentCue = null;
-  state.nextCueTargetMs = state.sessionStartMs;
-  state.speechDurationFactor = 1.6;
+  state.speechDurationFactor = 1.1;
+  state.transitionCompMs = 70;
+  state.nextCueTargetMs = state.sessionStartMs + state.transitionCompMs;
   elements.currentCue.textContent = "None";
   setStatus("Running");
   updateRuntimeDisplay(0);
   stopTimers();
   state.displayIntervalId = setInterval(updateRuntimeDisplay, 100);
+  state.endTimeoutId = setTimeout(finishSession, config.seconds * 1000);
   syncControlState();
   emitCue();
 }
@@ -376,10 +512,37 @@ function sanitizeColors(colorList) {
   return Array.from(set);
 }
 
+function parseOptionsParam(rawValue) {
+  const optionCounts = {};
+  if (!rawValue) {
+    return optionCounts;
+  }
+
+  rawValue.split(",").forEach(function (token) {
+    const parts = token.split(":");
+    if (parts.length !== 2) {
+      return;
+    }
+    const color = parts[0].trim().toLowerCase();
+    const count = Number.parseInt(parts[1].trim(), 10);
+    if (!AVAILABLE_COLORS.includes(color)) {
+      return;
+    }
+    const normalizedCount = sanitizeOptionCount(count);
+    if (normalizedCount === null) {
+      return;
+    }
+    optionCounts[color] = normalizedCount;
+  });
+
+  return optionCounts;
+}
+
 function readConfigFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const config = {
     colors: DEFAULT_CONFIG.colors.slice(),
+    optionCounts: {},
     hz: DEFAULT_CONFIG.hz,
     seconds: DEFAULT_CONFIG.seconds,
     seed: DEFAULT_CONFIG.seed
@@ -387,6 +550,11 @@ function readConfigFromUrl() {
 
   if (params.has("colors")) {
     config.colors = sanitizeColors(params.get("colors").split(","));
+  }
+
+  const parsedOptions = parseOptionsParam(params.get("options"));
+  for (const color of config.colors) {
+    config.optionCounts[color] = parsedOptions[color] || getDefaultOptionCount(color);
   }
 
   if (params.has("hz")) {
@@ -411,19 +579,23 @@ function readConfigFromUrl() {
 }
 
 function applyConfigToForm(config) {
-  const selected = new Set(config.colors);
-  elements.colorsFieldset
-    .querySelectorAll('input[name="color"]')
-    .forEach(function (input) {
-      input.checked = selected.has(input.value);
-    });
+  for (const color of AVAILABLE_COLORS) {
+    moveColorToOptionCount(color, 0);
+  }
+
+  const selectedColors = sanitizeColors(config.colors || []);
+  const providedOptionCounts = config.optionCounts || {};
+  for (const color of selectedColors) {
+    const optionCount = sanitizeOptionCount(providedOptionCounts[color]) || getDefaultOptionCount(color);
+    moveColorToOptionCount(color, optionCount);
+  }
 
   const hz = Number.isFinite(config.hz) ? config.hz : DEFAULT_CONFIG.hz;
   const seconds = Number.isFinite(config.seconds) ? config.seconds : DEFAULT_CONFIG.seconds;
   elements.hzInput.value = String(hz);
   elements.secondsInput.value = String(seconds);
   elements.seedInput.value = config.seed || "";
-  elements.hzValue.textContent = Number.parseFloat(elements.hzInput.value).toFixed(1);
+  elements.hzValue.textContent = formatHzValue(Number.parseFloat(elements.hzInput.value));
   elements.secondsValue.textContent = String(
     Number.parseInt(elements.secondsInput.value, 10)
   );
@@ -435,6 +607,10 @@ function buildShareUrl(config) {
   url.searchParams.set("colors", config.colors.join(","));
   url.searchParams.set("hz", String(config.hz));
   url.searchParams.set("seconds", String(config.seconds));
+  const optionTokens = config.colors.map(function (color) {
+    return color + ":" + String(config.optionCounts[color] || getDefaultOptionCount(color));
+  });
+  url.searchParams.set("options", optionTokens.join(","));
   if (config.seed) {
     url.searchParams.set("seed", config.seed);
   }
@@ -459,6 +635,70 @@ async function copyShareLink() {
   }
 }
 
+function wireDropZone(zoneElement, optionCount) {
+  zoneElement.addEventListener("dragover", function (event) {
+    event.preventDefault();
+    zoneElement.classList.add("is-over");
+  });
+
+  zoneElement.addEventListener("dragleave", function () {
+    zoneElement.classList.remove("is-over");
+  });
+
+  zoneElement.addEventListener("drop", function (event) {
+    event.preventDefault();
+    zoneElement.classList.remove("is-over");
+    const color =
+      event.dataTransfer.getData("text/plain").trim().toLowerCase() || state.draggedColor;
+    if (!AVAILABLE_COLORS.includes(color)) {
+      return;
+    }
+    moveColorToOptionCount(color, optionCount);
+    syncControlState();
+  });
+}
+
+function initializeColorBoard() {
+  if (state.boardInitialized) {
+    return;
+  }
+
+  elements.colorBankBody = elements.colorBank.querySelector(".zone-chips");
+  elements.optionZoneBodies = {};
+  elements.optionZones.forEach(function (zone) {
+    const optionCount = Number.parseInt(zone.dataset.optionCount, 10);
+    elements.optionZoneBodies[optionCount] = zone.querySelector(".zone-chips");
+  });
+
+  for (const color of AVAILABLE_COLORS) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "color-chip";
+    chip.draggable = true;
+    chip.dataset.color = color;
+    chip.textContent = titleCase(color);
+    chip.addEventListener("dragstart", function (event) {
+      state.draggedColor = color;
+      chip.classList.add("is-dragging");
+      event.dataTransfer.setData("text/plain", color);
+      event.dataTransfer.effectAllowed = "move";
+    });
+    chip.addEventListener("dragend", function () {
+      chip.classList.remove("is-dragging");
+      state.draggedColor = null;
+    });
+    elements.colorBankBody.appendChild(chip);
+  }
+
+  wireDropZone(elements.colorBank, 0);
+  elements.optionZones.forEach(function (zone) {
+    const optionCount = Number.parseInt(zone.dataset.optionCount, 10);
+    wireDropZone(zone, optionCount);
+  });
+
+  state.boardInitialized = true;
+}
+
 function wireEvents() {
   elements.startButton.addEventListener("click", function () {
     startSession(getFormValues());
@@ -473,7 +713,7 @@ function wireEvents() {
   });
 
   elements.form.addEventListener("input", function () {
-    elements.hzValue.textContent = Number.parseFloat(elements.hzInput.value).toFixed(1);
+    elements.hzValue.textContent = formatHzValue(Number.parseFloat(elements.hzInput.value));
     elements.secondsValue.textContent = String(
       Number.parseInt(elements.secondsInput.value, 10)
     );
@@ -500,6 +740,7 @@ function init() {
     }
   }
 
+  initializeColorBoard();
   const initialConfig = readConfigFromUrl();
   applyConfigToForm(initialConfig);
   wireEvents();
@@ -517,17 +758,21 @@ window.ColorCueApp = {
   MAX_SECONDS,
   state,
   elements,
+  getDefaultOptionCount,
+  getColorOptionCounts,
   getSelectedColors,
   getFormValues,
   validateConfig,
   createRandomFn,
   pickRandomColor,
+  buildCueText,
   computeCueRate,
   speakText,
   cancelSpeech,
   startSession,
   stopSession,
   finishSession,
+  parseOptionsParam,
   readConfigFromUrl,
   buildShareUrl,
   copyShareLink,
@@ -537,6 +782,7 @@ window.ColorCueApp = {
   clearError,
   sanitizeColors,
   applyConfigToForm,
+  moveColorToOptionCount,
   syncControlState,
   init
 };
